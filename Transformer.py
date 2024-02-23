@@ -49,7 +49,8 @@ class MultiHeadAttention(nn.Module):
         
         # mask for decoding
         if mask != None:
-            score = score.masked_fill(mask == 0, -1e9)
+            score *= mask
+            # score = score.masked_fill(mask == 0, -1e9)
         
         # Using the formula from the paper
         softmax_score = torch.softmax(score, -1)
@@ -250,7 +251,7 @@ class Decoder(nn.Module):
 
 
 
-    def forward(self, x, encoder_input, mask):
+    def forward(self, x, encoder_output, mask):
         '''
         Decodes the input from the Encoder for the output.
 
@@ -263,7 +264,7 @@ class Decoder(nn.Module):
         masked_attention = self.dropout(self.masked_mutli_head_attention_block(x, x, x, mask))
         normalised_masked_attention = self.normalisation_layer1(x + masked_attention)
 
-        attention = self.dropout(self.mutli_head_attention_block(encoder_input, encoder_input, x))
+        attention = self.dropout(self.mutli_head_attention_block(encoder_output, encoder_output, x))
         normalised_attention = self.normalisation_layer2(normalised_masked_attention + attention)
 
         feed_forward = self.dropout(self.feed_forward_block(normalised_attention))
@@ -307,12 +308,64 @@ class SLRTransformer(nn.Module):
         self.encoder_embedding = nn.Embedding(encoder_vocab_size, input_size)
         self.decoder_embedding = nn.Embedding(decoder_vocab_size, input_size)
 
-        self.encoder_pos_encoding = PositionalEncoding(input_size, max_sequence, dropout)
+        self.positional_encoding = PositionalEncoding(input_size, max_sequence, dropout)
 
         self.encoder_block = nn.ModuleList([Encoder(input_size, num_heads, hidden_size, dropout) for _ in range(num_layers)])
         self.decoder_block = nn.ModuleList([Decoder(input_size, num_heads, hidden_size, dropout) for _ in range(num_layers)])
 
-        self.linear_output = (input_size, decoder_vocab_size)
+        self.linear_output = nn.Linear(input_size, decoder_vocab_size)
         self.droput = nn.Dropout(dropout)
     
-    def generate_mask(self):
+    # Only for decoder block
+    def generate_mask(self, size):
+        '''
+        Generates a NxN mask matrix. This will be used for the decoder.
+        
+        Args;
+            size: Size of the mask. Aka. the input size.
+        '''
+        
+        # Mask is multiplied by attention score, so for
+        # additional flexibility, the 0s can be changed
+        mask = torch.tril(torch.ones(size, size)).bool()
+        
+        return mask
+    
+    def forward(self, encoder_input, decoder_input):
+        '''
+        Passing the input through encoder and decoder layers for sign language recognition.
+        
+        Args:
+            source: Input to the transformer. Aka. encoder input
+            target: The desired output of the transformer. Aka. decoder input?????
+        '''
+        
+        embedded_encoder_input = self.encoder_embedding(encoder_input)
+        embedded_decoder_input = self.decoder_embedding_embedding(decoder_input)
+        
+        positional_encoder_input = self.dropout(self.positional_encoding(embedded_encoder_input))
+        positional_decoder_input = self.dropout(self.positional_encoding(embedded_decoder_input))
+        
+        # Makes sure that the initial iteration passes the encoded input
+        encoder_output = positional_encoder_input
+        for encoder_head in self.encoder_block:
+            
+            # For this implementation, the encoder does not have any mask
+            encoder_output = encoder_head(encoder_output)
+        
+        # Mask for decoder
+        decoder_mask = self.generate_mask(decoder_input)
+        
+        # Makes sure that the initial iteration passes the encoded input
+        decoder_output = positional_decoder_input
+        for decoder_head in self.decoder_block:
+            
+            decoder_output = decoder_head(decoder_output, encoder_output, decoder_mask)
+            
+        output = self.linear_output(decoder_output)
+        
+        return output
+            
+            
+        
+        

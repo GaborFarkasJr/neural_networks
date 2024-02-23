@@ -145,6 +145,16 @@ class PositionalEncoding(nn.Module):
         self.input_size = input_size
         self.max_sequence = max_sequence
         
+        even_seq = torch.arange(0, input_size, 2).float()
+        # odd_seq = torch.arange(1, input_size, 2).float()
+        
+        position = torch.arange(0, max_sequence, dtype=torch.float).reshape(max_sequence, 1)
+        denom  = torch.pow(10000, (even_seq/input_size))
+        self.even_pe = torch.sin(position / denom)
+        self.odd_pe = torch.cos(position / denom)
+        
+        
+
         
 
 # Encoder Layer
